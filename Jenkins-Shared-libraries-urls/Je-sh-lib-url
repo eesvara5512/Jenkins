@@ -1,0 +1,12 @@
+Jenkins-Jira-integrations:
+
+
+https://jenkinsci.github.io/jira-steps-plugin/steps/issue/jira_assign_issue/
+
+https://www.jenkins.io/doc/book/pipeline/shared-libraries/
+
+https://tomd.xyz/jenkins-shared-library/
+
+https://medium.com/swlh/using-shared-libraries-in-a-jenkins-pipeline-d20206943792
+
+https://www.lambdatest.com/blog/use-jenkins-shared-libraries-in-a-jenkins-pipeline/  -with GUI example
