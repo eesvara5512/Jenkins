@@ -1,0 +1,54 @@
+provider "aws" {
+  region = "us-east-1"
+}
+
+resource "aws_sns_topic" "disk_usage_alerts" {
+  name = "ecs-prod-disk-usage-alerts"
+}
+
+resource "aws_sns_topic_subscription" "email_subscription" {
+  topic_arn = aws_sns_topic.disk_usage_alerts.arn
+  protocol  = "email"
+  endpoint  = "your-email@example.com"  # Replace with your email address
+}
+
+resource "aws_cloudwatch_log_metric_filter" "disk_used_percentage" {
+  name           = "DiskUsedPercentage"
+  log_group_name = "/aws/ecs/your-ecs-log-group"  # Replace with your log group
+
+  pattern = "{ ($.disk_used_percentage = * ) }"
+
+  metric_transformation {
+    name      = "DiskUsedPercentage"
+    namespace = "ECSCustomMetrics"
+    value     = "$.disk_used_percentage"
+  }
+}
+
+resource "aws_cloudwatch_metric_alarm" "disk_usage_warning" {
+  alarm_name          = "EcsDiskUsageWarning"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "DiskUsedPercentage"
+  namespace           = "ECSCustomMetrics"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "70"
+
+  alarm_description = "This metric monitors ECS disk usage and triggers if it exceeds 70%."
+  alarm_actions     = [aws_sns_topic.disk_usage_alerts.arn]
+}
+
+resource "aws_cloudwatch_metric_alarm" "disk_usage_critical" {
+  alarm_name          = "EcsDiskUsageCritical"
+  comparison_operator = "GreaterThanOrEqualToThreshold"
+  evaluation_periods  = "1"
+  metric_name         = "DiskUsedPercentage"
+  namespace           = "ECSCustomMetrics"
+  period              = "300"
+  statistic           = "Average"
+  threshold           = "80"
+
+  alarm_description = "This metric monitors ECS disk usage and triggers if it exceeds 80%."
+  alarm_actions     = [aws_sns_topic.disk_usage_alerts.arn]
+}
