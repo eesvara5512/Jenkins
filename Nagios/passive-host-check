@@ -1,0 +1,726 @@
+Ansible Playbook to Configure Nagios for Passive Host Checks
+Passive checks in Nagios allow external applications or scripts to send check results instead of Nagios actively polling the hosts. This is useful for monitoring hosts behind firewalls, checking logs, or integrating with third-party monitoring tools.
+
+🔹 What This Playbook Does
+✅ Installs Nagios & NRDP (Nagios Remote Data Processor) for passive checks.
+✅ Configures Nagios to accept passive host check results.
+✅ Deploys NRDP configuration to receive passive checks.
+✅ Restarts Nagios after configuration changes.
+
+1️⃣ Ansible Playbook: nagios_passive.yml
+yaml
+Copy
+Edit
+---
+- name: Install and configure Nagios for Passive Host Checks
+  hosts: nagios_server
+  become: yes
+  tasks:
+
+    - name: Install Nagios and required packages
+      apt:
+        name:
+          - nagios4
+          - nagios-plugins
+          - nagios-nrpe-plugin
+        state: present
+        update_cache: yes
+
+    - name: Ensure NRDP (Nagios Remote Data Processor) is installed
+      git:
+        repo: "https://github.com/NagiosEnterprises/nrdp.git"
+        dest: "/usr/local/nrdp"
+        clone: yes
+        update: yes
+
+    - name: Copy Nagios passive host check configuration
+      template:
+        src: nagios_passive_hosts.cfg.j2
+        dest: /etc/nagios/conf.d/passive_hosts.cfg
+      notify: restart nagios
+
+    - name: Copy NRDP configuration
+      template:
+        src: nrdp.cfg.j2
+        dest: /usr/local/nrdp/config.php
+      notify: restart apache
+
+  handlers:
+    - name: restart nagios
+      service:
+        name: nagios
+        state: restarted
+
+    - name: restart apache
+      service:
+        name: apache2
+        state: restarted
+2️⃣ Nagios Passive Host Configuration Template (nagios_passive_hosts.cfg.j2)
+This defines passive host checks in Nagios.
+
+cfg
+Copy
+Edit
+define host {
+    host_name           remote-server
+    alias               Remote Server
+    address             192.168.1.100
+    check_period        24x7
+    check_command       check_dummy!0
+    max_check_attempts  1
+    notification_period 24x7
+    notification_options d,u,r
+    notifications_enabled 1
+    active_checks_enabled 0  ; Disable active checks
+    passive_checks_enabled 1  ; Enable passive checks
+}
+✔ Passive checks enabled (passive_checks_enabled 1)
+✔ Active checks disabled (active_checks_enabled 0)
+
+3️⃣ NRDP Configuration Template (nrdp.cfg.j2)
+This enables NRDP to accept passive check results.
+
+php
+Copy
+Edit
+<?php
+$cfg['authorized_tokens'] = array("your_secret_token");
+$cfg['debug'] = false;
+$cfg['check_results_dir'] = "/var/nagios/spool/checkresults";
+$cfg['check_results_perms'] = "0666";
+?>
+✔ Uses a secret token for security (your_secret_token).
+✔ Defines where passive check results are stored.
+
+4️⃣ Sending Passive Host Check Results
+Once the playbook is applied, you can submit passive host checks using the send_nrdp.sh script:
+
+bash
+Copy
+Edit
+/usr/local/nrdp/clients/send_nrdp.sh -u http://nagios-server/nrdp/ -t your_secret_token -H remote-server -s 0 -o "Host is UP"
+-H remote-server → The monitored host.
+-s 0 → Status (0 = OK, 1 = WARNING, 2 = CRITICAL, 3 = UNKNOWN).
+-o "Host is UP" → Message for Nagios.
+5️⃣ Run the Ansible Playbook
+Deploy everything with:
+
+bash
+Copy
+Edit
+ansible-playbook -i inventory nagios_passive.yml
+✅ Summary
+✔ Passive host checks configured in Nagios.
+✔ NRDP installed for submitting passive results.
+✔ Ansible automates setup and applies security tokens.
+
+Would you like to add email alerts for passive host failures? 🚀
+
+
+
+
+
+
+
+You said:
+what is diffrent between active and passive host check
+ChatGPT said:
+🔍 Difference Between Active and Passive Host Checks in Nagios
+Nagios supports two types of host checks:
+
+Active Host Checks (Nagios initiates the check)
+Passive Host Checks (External sources send the results)
+Feature	Active Host Checks	Passive Host Checks
+Who initiates?	Nagios initiates the check	External application or script submits results
+When does it run?	On a fixed schedule (check_interval)	When external data is received
+Purpose	Ensures the host is reachable by polling	Useful for hosts behind firewalls or event-driven monitoring
+Example Command	check_ping -H 192.168.1.100	send_nrdp.sh -H server1 -s 2 -o "CRITICAL: Host Down"
+Used for?	Proactive Monitoring	Event-based Monitoring
+Alert Generation	If a host is unreachable after retries	If no check results are received within freshness_threshold
+📌 How They Work
+🟢 Active Host Check (Nagios-Initiated)
+1️⃣ Nagios pings the host (e.g., check_ping).
+2️⃣ If the host does not respond, Nagios retries (retry_interval).
+3️⃣ If failures reach max_check_attempts, an alert is triggered.
+
+Example Active Host Check in Nagios Config:
+cfg
+Copy
+Edit
+define host {
+    host_name           webserver
+    address            192.168.1.100
+    check_command      check_ping
+    check_interval     5
+    retry_interval     1
+    max_check_attempts 3
+    active_checks_enabled 1
+    passive_checks_enabled 0
+}
+🔵 Passive Host Check (External-Initiated)
+1️⃣ An external script or tool detects a problem.
+2️⃣ It submits a passive check result to Nagios (via NRDP, NSCA, API, etc.).
+3️⃣ If Nagios does not receive updates within a set time (freshness_threshold), it assumes the host is down.
+
+Example Passive Host Check in Nagios Config:
+cfg
+Copy
+Edit
+define host {
+    host_name           remote-server
+    address             192.168.1.200
+    check_command       check_dummy!0
+    max_check_attempts  1
+    active_checks_enabled 0  ; Disable active checks
+    passive_checks_enabled 1  ; Enable passive checks
+    freshness_threshold  600  ; If no update in 10 minutes, assume issue
+    check_freshness      1
+}
+check_freshness 1 → Enables stale check detection.
+freshness_threshold 600 → If no passive result in 10 minutes, trigger alert.
+How to Send Passive Host Check Results
+Example of sending a passive check result:
+
+bash
+Copy
+Edit
+/usr/local/nrdp/clients/send_nrdp.sh -u http://nagios-server/nrdp/ -t your_secret_token -H remote-server -s 2 -o "Host is DOWN"
+-H remote-server → Host name.
+-s 2 → Status (0=OK, 1=WARNING, 2=CRITICAL, 3=UNKNOWN).
+-o "Host is DOWN" → Message sent to Nagios.
+🚀 When to Use Active vs. Passive Checks?
+Scenario	Use Active	Use Passive
+Host is accessible via Nagios	✅ Yes	❌ No
+Host is behind a firewall/NAT	❌ No	✅ Yes
+Checking network latency, ping, SSH	✅ Yes	❌ No
+External tools detect failures	❌ No	✅ Yes
+Event-based monitoring (e.g., logs)	❌ No	✅ Yes
+Load-balanced or cloud-based hosts	❌ No	✅ Yes
+🎯 Summary
+Active Checks: Nagios actively pings/checks a host.
+Passive Checks: External sources submit check results to Nagios.
+Use Active Checks if Nagios has direct network access to the host.
+Use Passive Checks for event-driven monitoring or when the host is behind a firewall.
+Would you like a Nagios Ansible Playbook to configure both Active & Passive checks together? 🚀
+
+
+
+
+
+
+
+You said:
+NSCA passive host check
+ChatGPT said:
+🔹 NSCA-Based Passive Host Checks in Nagios (Ansible Playbook)
+Nagios Service Check Acceptor (NSCA) allows remote hosts to send passive check results to the Nagios server securely. It is useful for monitoring hosts behind firewalls, log-based monitoring, or custom event-driven alerts.
+
+🔍 What This Playbook Does
+✅ Installs & Configures NSCA on the Nagios Server
+✅ Enables Nagios Passive Host Checks
+✅ Configures NRPE on Remote Hosts (to send passive results)
+✅ Restarts Nagios & NSCA after configuration updates
+
+1️⃣ Ansible Playbook: nagios_nsca.yml
+This installs NSCA, configures passive checks, and restarts services.
+
+yaml
+Copy
+Edit
+---
+- name: Install and configure Nagios NSCA for Passive Host Checks
+  hosts: nagios_server
+  become: yes
+  tasks:
+
+    - name: Install Nagios and NSCA
+      apt:
+        name:
+          - nagios4
+          - nagios-plugins
+          - nsca
+          - mailutils  # Optional: For email alerts
+        state: present
+        update_cache: yes
+
+    - name: Copy Nagios passive host check configuration
+      template:
+        src: nagios_passive_hosts.cfg.j2
+        dest: /etc/nagios/conf.d/passive_hosts.cfg
+      notify: restart nagios
+
+    - name: Copy NSCA configuration
+      template:
+        src: nsca.cfg.j2
+        dest: /etc/nsca.cfg
+      notify: restart nsca
+
+    - name: Enable and start NSCA service
+      service:
+        name: nsca
+        state: started
+        enabled: yes
+
+  handlers:
+    - name: restart nagios
+      service:
+        name: nagios
+        state: restarted
+
+    - name: restart nsca
+      service:
+        name: nsca
+        state: restarted
+2️⃣ Nagios Passive Host Configuration Template (nagios_passive_hosts.cfg.j2)
+Defines a passive host check in Nagios.
+
+cfg
+Copy
+Edit
+define host {
+    host_name            remote-server
+    alias               Remote Server
+    address             192.168.1.200
+    check_period        24x7
+    check_command       check_dummy!0
+    max_check_attempts  1
+    notification_period 24x7
+    notification_options d,u,r
+    notifications_enabled 1
+    active_checks_enabled 0  ; Disable active checks
+    passive_checks_enabled 1  ; Enable passive checks
+    check_freshness      1
+    freshness_threshold  600  ; If no update in 10 min, trigger alert
+}
+3️⃣ NSCA Configuration Template (nsca.cfg.j2)
+Defines how NSCA handles passive check results.
+
+cfg
+Copy
+Edit
+password=your_secure_password
+server_port=5667
+decryption_method=3  # 3 = Triple DES (secure)
+command_file=/var/nagios/rw/nagios.cmd
+server_port=5667 → Port NSCA listens on.
+decryption_method=3 → Uses Triple DES encryption for security.
+password=your_secure_password → Needs to match the client's password.
+4️⃣ Configure Remote Host to Send Passive Check Results
+Install send_nsca on Remote Host
+On the remote host, install the send_nsca client:
+
+bash
+Copy
+Edit
+sudo apt install nsca-client -y
+Send Passive Host Check Result
+The remote host can send a passive check result to the Nagios server using send_nsca:
+
+bash
+Copy
+Edit
+echo -e "remote-server\t0\tHost is UP" | send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg
+"remote-server" → The host being monitored.
+0 → Status code (0=OK, 1=WARNING, 2=CRITICAL, 3=UNKNOWN).
+"Host is UP" → Message displayed in Nagios.
+Create send_nsca.cfg on Remote Host
+cfg
+Copy
+Edit
+password=your_secure_password
+server_port=5667
+encryption_method=3
+This must match the NSCA server settings.
+
+5️⃣ Run the Ansible Playbook
+Deploy everything with:
+
+bash
+Copy
+Edit
+ansible-playbook -i inventory nagios_nsca.yml
+🎯 Summary
+NSCA allows remote hosts to send passive host check results.
+Nagios listens on port 5667 for passive results.
+Remote hosts use send_nsca to submit checks securely.
+Nagios will mark a host DOWN if no check result is received within the freshness_threshold.
+Would you like to automate the remote host configuration with Ansible? 🚀
+
+
+
+
+
+
+
+You said:
+yes
+ChatGPT said:
+🔹 Ansible Playbook for Automating Remote Host NSCA Configuration
+This playbook installs and configures NSCA client (send_nsca) on remote hosts so they can send passive check results to the Nagios server automatically.
+
+🔍 What This Playbook Does
+✅ Installs nsca-client (NSCA sender) on remote hosts
+✅ Configures send_nsca.cfg with the correct password and encryption
+✅ Sets up a cron job to send passive host status to Nagios regularly
+✅ Ensures communication with Nagios server over port 5667
+
+1️⃣ Ansible Playbook for Remote Hosts (nagios_nsca_client.yml)
+yaml
+Copy
+Edit
+---
+- name: Install and configure NSCA client on remote hosts
+  hosts: monitored_hosts
+  become: yes
+  tasks:
+
+    - name: Install NSCA client
+      apt:
+        name: nsca-client
+        state: present
+        update_cache: yes
+
+    - name: Copy NSCA client configuration
+      template:
+        src: send_nsca.cfg.j2
+        dest: /etc/send_nsca.cfg
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Ensure NSCA client can send passive check results
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ nagios_server_ip }} nagios-server"
+        state: present
+
+    - name: Add cron job to send passive host check results every 5 minutes
+      cron:
+        name: "Send NSCA passive host check"
+        minute: "*/5"
+        job: "echo -e '{{ inventory_hostname }}\\t0\\tHost is UP' | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg"
+
+    - name: Allow NSCA traffic through firewall (if UFW is enabled)
+      command: "ufw allow 5667"
+      ignore_errors: yes
+2️⃣ NSCA Client Configuration Template (send_nsca.cfg.j2)
+Place this in your templates/ directory.
+
+cfg
+Copy
+Edit
+password={{ nsca_password }}
+server_port=5667
+encryption_method=3  # Triple DES encryption
+✔ Uses Ansible variables (nsca_password) for security.
+
+3️⃣ Inventory File (inventory.ini)
+Define Nagios server & monitored hosts.
+
+ini
+Copy
+Edit
+[nagios_server]
+nagios-server ansible_host=192.168.1.100
+
+[monitored_hosts]
+server1 ansible_host=192.168.1.101
+server2 ansible_host=192.168.1.102
+4️⃣ Run the Playbook
+Execute the playbook to configure all remote hosts:
+
+bash
+Copy
+Edit
+ansible-playbook -i inventory.ini nagios_nsca_client.yml --extra-vars "nsca_password=your_secure_password nagios_server_ip=192.168.1.100"
+🎯 Summary
+Installs NSCA client (send_nsca) on remote hosts
+Configures secure communication (send_nsca.cfg)
+Sets up a cron job to send host check results every 5 minutes
+Allows NSCA traffic on port 5667
+Would you like to extend this for service checks (CPU, Disk, Memory monitoring)? 🚀
+
+
+
+
+
+
+
+You said:
+yes
+ChatGPT said:
+🔹 Extending NSCA for Service Checks in Nagios Using Ansible
+Now, let's extend the existing playbook to include service checks (e.g., CPU, Disk, Memory monitoring) on remote hosts. These service checks can be monitored remotely and submitted via passive checks to the Nagios server.
+
+🔍 What This Playbook Does
+✅ Monitors service checks like CPU, Disk, and Memory on remote hosts.
+✅ Sends service check results using send_nsca to the Nagios server.
+✅ Sets up cron jobs to periodically check and send service statuses.
+✅ Configures passive check results for CPU, Disk, and Memory.
+
+1️⃣ Ansible Playbook for Service Checks (nagios_nsca_service.yml)
+This playbook monitors services like CPU, Memory, and Disk, and sends results to Nagios.
+
+yaml
+Copy
+Edit
+---
+- name: Install and configure NSCA client with service checks on remote hosts
+  hosts: monitored_hosts
+  become: yes
+  tasks:
+
+    - name: Install NSCA client
+      apt:
+        name: nsca-client
+        state: present
+        update_cache: yes
+
+    - name: Copy NSCA client configuration
+      template:
+        src: send_nsca.cfg.j2
+        dest: /etc/send_nsca.cfg
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Ensure NSCA client can send passive check results
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ nagios_server_ip }} nagios-server"
+        state: present
+
+    - name: Install system monitoring utilities (for CPU, Disk, Memory)
+      apt:
+        name:
+          - sysstat
+          - procps
+        state: present
+
+    - name: Add cron job to send passive host check results every 5 minutes
+      cron:
+        name: "Send NSCA passive host check"
+        minute: "*/5"
+        job: "echo -e '{{ inventory_hostname }}\\t0\\tHost is UP' | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg"
+
+    - name: Add cron job to send passive service checks (CPU, Disk, Memory) every 5 minutes
+      cron:
+        name: "Send NSCA service checks"
+        minute: "*/5"
+        job: |
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+          DISK_USAGE=$(df -h | grep -E '^/dev/' | awk '{print $5}' | cut -d'%' -f1)
+          MEM_USAGE=$(free | grep Mem | awk '{print $3/$2 * 100.0}')
+
+          # Sending CPU Usage
+          echo -e "{{ inventory_hostname }}\t0\tCPU Usage: ${CPU_USAGE}%" | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg
+          
+          # Sending Disk Usage (for root partition as an example)
+          echo -e "{{ inventory_hostname }}\t0\tDisk Usage: ${DISK_USAGE}%" | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg
+          
+          # Sending Memory Usage
+          echo -e "{{ inventory_hostname }}\t0\tMemory Usage: ${MEM_USAGE}%" | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg
+
+    - name: Allow NSCA traffic through firewall (if UFW is enabled)
+      command: "ufw allow 5667"
+      ignore_errors: yes
+2️⃣ Service Check (CPU, Disk, Memory) Configuration Explanation
+This playbook monitors basic system services:
+
+CPU Usage: Checks the percentage of CPU usage and sends it to Nagios.
+Disk Usage: Checks the disk usage (percentage) of the root partition (/) and sends it.
+Memory Usage: Sends memory usage percentage.
+The script extracts the current system statistics using common commands like top, df, and free, and then sends these results to the Nagios server using the send_nsca command.
+
+3️⃣ NSCA Client Configuration Template (send_nsca.cfg.j2)
+This remains the same as before, but we’re using it for service check data.
+
+cfg
+Copy
+Edit
+password={{ nsca_password }}
+server_port=5667
+encryption_method=3  # Triple DES encryption
+4️⃣ Cron Job Explanation
+The /etc/cron.d/ job for sending service checks runs every 5 minutes.
+It collects CPU, Disk, and Memory usage, formats the data, and sends it to the Nagios server using send_nsca.
+5️⃣ Run the Playbook
+Execute the playbook to configure all remote hosts for service checks:
+
+bash
+Copy
+Edit
+ansible-playbook -i inventory.ini nagios_nsca_service.yml --extra-vars "nsca_password=your_secure_password nagios_server_ip=192.168.1.100"
+🎯 Summary
+Service checks for CPU, Disk, and Memory are added.
+Results are sent to Nagios via passive checks using NSCA.
+Cron jobs automatically collect and send data every 5 minutes.
+Would you like to customize the service check thresholds for critical status (e.g., high CPU usage alerts) in Nagios? 🚀
+
+
+
+
+
+
+
+You said:
+yes
+ChatGPT said:
+🔹 Adding Service Check Thresholds in Nagios for CPU, Disk, and Memory Alerts
+Now, let's set up threshold-based alerts for the CPU, Disk, and Memory usage to trigger critical or warning statuses based on specific thresholds. These thresholds will be configured on the Nagios server and passed along with the passive check results from the remote hosts.
+
+🔍 What This Playbook Does
+✅ Sets thresholds for CPU, Disk, and Memory usage to trigger critical or warning states.
+✅ Modifies the Ansible playbook to send threshold-based statuses (e.g., CRITICAL, WARNING, OK).
+✅ Sends status messages (like CPU Usage exceeds 90%) for service monitoring.
+
+1️⃣ Modified Ansible Playbook with Threshold-Based Alerts (nagios_nsca_service_with_thresholds.yml)
+This updated playbook evaluates CPU, Disk, and Memory usage, and based on thresholds, it sends appropriate statuses (OK, WARNING, CRITICAL) to the Nagios server.
+
+yaml
+Copy
+Edit
+---
+- name: Install and configure NSCA client with service checks and thresholds on remote hosts
+  hosts: monitored_hosts
+  become: yes
+  tasks:
+
+    - name: Install NSCA client
+      apt:
+        name: nsca-client
+        state: present
+        update_cache: yes
+
+    - name: Copy NSCA client configuration
+      template:
+        src: send_nsca.cfg.j2
+        dest: /etc/send_nsca.cfg
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Ensure NSCA client can send passive check results
+      lineinfile:
+        path: /etc/hosts
+        line: "{{ nagios_server_ip }} nagios-server"
+        state: present
+
+    - name: Install system monitoring utilities (for CPU, Disk, Memory)
+      apt:
+        name:
+          - sysstat
+          - procps
+        state: present
+
+    - name: Add cron job to send passive service checks with thresholds every 5 minutes
+      cron:
+        name: "Send NSCA service checks with thresholds"
+        minute: "*/5"
+        job: |
+          # Check CPU usage
+          CPU_USAGE=$(top -bn1 | grep "Cpu(s)" | sed "s/.*, *\([0-9.]*\)%* id.*/\1/" | awk '{print 100 - $1}')
+          if (( $(echo "$CPU_USAGE > 90" | bc -l) )); then
+            CPU_STATUS=2  # CRITICAL
+            CPU_MESSAGE="CPU Usage is CRITICAL: ${CPU_USAGE}%"
+          elif (( $(echo "$CPU_USAGE > 75" | bc -l) )); then
+            CPU_STATUS=1  # WARNING
+            CPU_MESSAGE="CPU Usage is WARNING: ${CPU_USAGE}%"
+          else
+            CPU_STATUS=0  # OK
+            CPU_MESSAGE="CPU Usage is OK: ${CPU_USAGE}%"
+          fi
+
+          # Check Disk usage (root partition)
+          DISK_USAGE=$(df -h | grep -E '^/dev/' | awk '{print $5}' | cut -d'%' -f1)
+          if (( $DISK_USAGE > 90 )); then
+            DISK_STATUS=2  # CRITICAL
+            DISK_MESSAGE="Disk Usage is CRITICAL: ${DISK_USAGE}%"
+          elif (( $DISK_USAGE > 75 )); then
+            DISK_STATUS=1  # WARNING
+            DISK_MESSAGE="Disk Usage is WARNING: ${DISK_USAGE}%"
+          else
+            DISK_STATUS=0  # OK
+            DISK_MESSAGE="Disk Usage is OK: ${DISK_USAGE}%"
+          fi
+
+          # Check Memory usage
+          MEM_USAGE=$(free | grep Mem | awk '{print $3/$2 * 100.0}')
+          if (( $(echo "$MEM_USAGE > 90" | bc -l) )); then
+            MEM_STATUS=2  # CRITICAL
+            MEM_MESSAGE="Memory Usage is CRITICAL: ${MEM_USAGE}%"
+          elif (( $(echo "$MEM_USAGE > 75" | bc -l) )); then
+            MEM_STATUS=1  # WARNING
+            MEM_MESSAGE="Memory Usage is WARNING: ${MEM_USAGE}%"
+          else
+            MEM_STATUS=0  # OK
+            MEM_MESSAGE="Memory Usage is OK: ${MEM_USAGE}%"
+          fi
+
+          # Sending results to Nagios using NSCA
+          echo -e "{{ inventory_hostname }}\t${CPU_STATUS}\t${CPU_MESSAGE}" | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg
+          echo -e "{{ inventory_hostname }}\t${DISK_STATUS}\t${DISK_MESSAGE}" | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg
+          echo -e "{{ inventory_hostname }}\t${MEM_STATUS}\t${MEM_MESSAGE}" | /usr/sbin/send_nsca -H nagios-server -p 5667 -c /etc/send_nsca.cfg
+
+    - name: Allow NSCA traffic through firewall (if UFW is enabled)
+      command: "ufw allow 5667"
+      ignore_errors: yes
+2️⃣ Explanation of the Threshold-Based Logic
+CPU Check:
+
+Critical if CPU usage > 90%.
+Warning if CPU usage > 75%.
+OK if CPU usage <= 75%.
+Disk Check (for /dev/ partitions):
+
+Critical if disk usage > 90%.
+Warning if disk usage > 75%.
+OK if disk usage <= 75%.
+Memory Check:
+
+Critical if memory usage > 90%.
+Warning if memory usage > 75%.
+OK if memory usage <= 75%.
+Each of these checks sends a corresponding status code (0 = OK, 1 = WARNING, 2 = CRITICAL) to Nagios via NSCA. The results are formatted with a message explaining the condition (e.g., "CPU Usage is CRITICAL: 95%").
+
+3️⃣ NSCA Client Configuration Template (send_nsca.cfg.j2)
+This remains the same as earlier, and it's used for secure communication.
+
+cfg
+Copy
+Edit
+password={{ nsca_password }}
+server_port=5667
+encryption_method=3  # Triple DES encryption
+4️⃣ Run the Playbook
+Execute the playbook to set up thresholds for CPU, Disk, and Memory on all remote hosts:
+
+bash
+Copy
+Edit
+ansible-playbook -i inventory.ini nagios_nsca_service_with_thresholds.yml --extra-vars "nsca_password=your_secure_password nagios_server_ip=192.168.1.100"
+5️⃣ Update Nagios Server to Handle Passive Service Checks
+On the Nagios server, ensure your configuration can process passive service checks with the correct thresholds. This includes setting up service definitions with appropriate check_command, max_check_attempts, and thresholds.
+
+Example for a service check in Nagios (inside services.cfg):
+
+cfg
+Copy
+Edit
+define service {
+    host_name        remote-server
+    service_description  CPU Usage
+    check_command    check_dummy!0  # Passive check
+    max_check_attempts 1
+    passive_checks_enabled 1
+    check_period     24x7
+    notification_period 24x7
+    freshness_threshold 600
+}
+You can add similar service definitions for Disk and Memory usage on the Nagios server.
+
+🎯 Summary
+The Ansible playbook now checks CPU, Disk, and Memory usage against thresholds.
+It sends CRITICAL, WARNING, or OK statuses based on the thresholds to Nagios via NSCA.
+Cron jobs on remote hosts handle the periodic checks and updates.
+Would you like help setting up the corresponding Nagios services to visualize and alert on these thresholds? 🚀
