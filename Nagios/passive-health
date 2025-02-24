@@ -1,0 +1,118 @@
+1. Passive Check Shell Script (nagios_passive_check.sh)
+This script:
+
+Checks if the Azure VM is reachable (ping test).
+Verifies if SSH (Linux) or WinRM (Windows) ports are open.
+Sends the check result to Nagios via NSCA (Nagios Service Check Acceptor).
+bash
+Copy
+Edit
+#!/bin/bash
+
+HOST=$1
+NAGIOS_SERVER="nagios.yourdomain.com"
+NAGIOS_SERVICE="Azure_VM_Check"
+STATUS=0  # 0 = OK, 1 = WARNING, 2 = CRITICAL
+OUTPUT=""
+
+# Check if the host is reachable
+ping -c 2 $HOST &> /dev/null
+if [ $? -eq 0 ]; then
+    OUTPUT="Host $HOST is reachable."
+else
+    OUTPUT="CRITICAL: Host $HOST is unreachable!"
+    STATUS=2
+fi
+
+# Check for SSH (Linux) access
+nc -z -v -w5 $HOST 22 &> /dev/null
+if [ $? -eq 0 ]; then
+    OUTPUT="$OUTPUT SSH is open."
+else
+    OUTPUT="$OUTPUT WARNING: SSH not accessible."
+    STATUS=1
+fi
+
+# Check for WinRM (Windows) access
+nc -z -v -w5 $HOST 5985 &> /dev/null
+if [ $? -eq 0 ]; then
+    OUTPUT="$OUTPUT WinRM is open."
+else
+    OUTPUT="$OUTPUT WARNING: WinRM not accessible."
+    STATUS=1
+fi
+
+# Send result to Nagios using NSCA
+echo -e "$HOST\t$NAGIOS_SERVICE\t$STATUS\t$OUTPUT" | /usr/local/nagios/libexec/send_nsca -H $NAGIOS_SERVER -c /etc/nsca.cfg
+
+exit $STATUS
+2. Ansible Playbook (nagios_passive_check.yml)
+This playbook:
+
+Copies the passive check script to the Azure VM.
+Runs the script to check the host status.
+Sends the check results to Nagios.
+yaml
+Copy
+Edit
+---
+- name: Run Nagios Passive Check on Azure VM
+  hosts: azure_vms
+  become: yes
+  tasks:
+
+    - name: Copy Nagios passive check script
+      copy:
+        src: nagios_passive_check.sh
+        dest: /tmp/nagios_passive_check.sh
+        mode: '0755'
+
+    - name: Execute Nagios passive check script
+      shell: "/tmp/nagios_passive_check.sh {{ inventory_hostname }}"
+      register: nagios_check_output
+
+    - name: Display check results
+      debug:
+        msg: "{{ nagios_check_output.stdout_lines }}"
+3. Configure Nagios for Passive Checks
+Edit Nagios Service Configuration
+Add this to /usr/local/nagios/etc/objects/azure_vm.cfg:
+
+cfg
+Copy
+Edit
+define service {
+    use                 generic-service
+    host_name           your-azure-vm
+    service_description Azure_VM_Check
+    check_command       check_dummy!0
+    passive_checks_enabled 1
+    active_checks_enabled 0
+}
+Restart Nagios
+bash
+Copy
+Edit
+sudo systemctl restart nagios
+4. Run the Ansible Playbook
+Ensure your inventory.ini file has the Azure VM:
+
+csharp
+Copy
+Edit
+[azure_vms]
+your-vm-ip ansible_user=your-user ansible_ssh_private_key_file=your-key.pem
+Run the playbook with:
+
+bash
+Copy
+Edit
+ansible-playbook -i inventory.ini nagios_passive_check.yml
+How It Works:
+The shell script checks if the Azure VM is reachable.
+It verifies SSH (Linux) and WinRM (Windows) connectivity.
+The script sends the results to Nagios using send_nsca.
+The Ansible playbook:
+Copies the script to the VM.
+Runs it and retrieves results.
+Nagios updates the service status based on the passive check.
