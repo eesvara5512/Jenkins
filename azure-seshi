@@ -48,3 +48,9 @@
     - name: Display Git version
       debug:
         msg: "Git installed version: {{ git_version.stdout }}"
+
+
+============
+Invoke-WebRequest -Uri "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe" -OutFile "$env:TEMP\Git-64-bit.exe"
+
+https://github.com/git-for-windows/git/releases/download/v2.48.1.windows.1/Git-2.48.1-64-bit.exe
