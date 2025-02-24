@@ -1,0 +1,65 @@
+1. Passive Host Check Shell Script (nagios_host_passive_check.sh)
+This script:
+
+Uses check_host to test connectivity.
+Submits results to Nagios via nagios.cmd file or NSCA.
+bash
+Copy
+Edit
+#!/bin/bash
+
+HOST=$1
+NAGIOS_CMD_FILE="/var/spool/nagios/cmd/nagios.cmd"  # Adjust if different
+NAGIOS_SERVER="nagios.yourdomain.com"
+
+# Get the current timestamp
+TIMESTAMP=$(date +%s)
+
+# Run Nagios check_host plugin
+OUTPUT=$(/usr/local/nagios/libexec/check_host -H $HOST)
+STATUS=$?
+
+# Convert status codes for Nagios
+case $STATUS in
+    0) STATUS_TEXT="OK" ;;
+    1) STATUS_TEXT="WARNING" ;;
+    2) STATUS_TEXT="CRITICAL" ;;
+    3) STATUS_TEXT="UNKNOWN" ;;
+esac
+
+# Submit the result to Nagios
+echo "[$TIMESTAMP] PROCESS_HOST_CHECK_RESULT;$HOST;$STATUS;$STATUS_TEXT - $OUTPUT" >> $NAGIOS_CMD_FILE
+
+# Alternative: Send result via NSCA if required
+echo -e "$HOST\tHost_Check\t$STATUS\t$STATUS_TEXT - $OUTPUT" | /usr/local/nagios/libexec/send_nsca -H $NAGIOS_SERVER -c /etc/nsca.cfg
+
+exit $STATUS
+2. Ansible Playbook to Run Passive Host Check (nagios_host_passive_check.yml)
+This playbook:
+
+Copies the script to Azure VMs.
+Runs it and submits results to Nagios.
+yaml
+Copy
+Edit
+---
+- name: Run Nagios Passive Host Check on Azure VM
+  hosts: azure_vms
+  become: yes
+  tasks:
+
+    - name: Copy Nagios passive check script to Azure VM (Linux)
+      copy:
+        src: nagios_host_passive_check.sh
+        dest: /tmp/nagios_host_passive_check.sh
+        mode: '0755'
+      when: ansible_os_family != "Windows"
+
+    - name: Execute Nagios passive check script (Linux)
+      shell: "/tmp/nagios_host_passive_check.sh {{ inventory_hostname }}"
+      register: nagios_check_output
+      when: ansible_os_family != "Windows"
+
+    - name: Display check results
+      debug:
+        msg: "{{ nagios_check_output.stdout_lines }}"
