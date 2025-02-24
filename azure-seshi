@@ -1,0 +1,47 @@
+---
+- name: Whitelist IP and Install Git on Windows VM
+  hosts: windows
+  gather_facts: no
+  tasks:
+
+    - name: Ensure required Ansible collections are installed
+      ansible.builtin.include_tasks:
+        file: requirements.yml
+
+    - name: Get public IP of the control machine
+      ansible.builtin.uri:
+        url: "https://api.ipify.org?format=text"
+        return_content: yes
+      register: my_ip
+
+    - name: Add IP to Azure NSG whitelist
+      azure_rm_securityrule:
+        resource_group: "myResourceGroup"
+        security_group_name: "myNSG"
+        name: "AllowAnsibleIP"
+        priority: 100
+        direction: "Inbound"
+        access: "Allow"
+        protocol: "Tcp"
+        source_port_range: "*"
+        destination_port_range: "5985-5986"
+        source_address_prefix: "{{ my_ip.content }}"
+        destination_address_prefix: "*"
+        action: "Allow"
+      delegate_to: localhost
+
+    - name: Download Git installer
+      win_get_url:
+        url: "https://github.com/git-for-windows/git/releases/latest/download/Git-64-bit.exe"
+        dest: "C:\\Windows\\Temp\\Git-64-bit.exe"
+
+    - name: Install Git silently
+      win_shell: "C:\\Windows\\Temp\\Git-64-bit.exe /SILENT"
+
+    - name: Verify Git installation
+      win_command: git --version
+      register: git_version
+
+    - name: Display Git version
+      debug:
+        msg: "Git installed version: {{ git_version.stdout }}"
