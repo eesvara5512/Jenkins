@@ -1,0 +1,27 @@
+environment: "dev"
+serviceName: "default-service"
+image:
+  repository: "myrepo/default-service"
+  tag: "latest"
+  pullPolicy: Always
+
+resources:
+  limits:
+    cpu: 256
+    memory: 512Mi
+  requests:
+    cpu: 128
+    memory: 256Mi
+
+env:
+  - name: ENVIRONMENT
+    value: "{{ .Values.environment }}"
+
+port: 8080
+
+logConfiguration:
+  logDriver: awslogs
+  options:
+    awslogs-group: "/ecs/{{ .Values.serviceName }}"
+    awslogs-region: "us-west-2"
+    awslogs-stream-prefix: "{{ .Values.environment }}"
