@@ -1,0 +1,16 @@
+apiVersion: ecs.services.k8s.aws/v1alpha1
+kind: TaskDefinition
+metadata:
+  name: {{ include "ecs-helm-chart.fullname" . }}
+spec:
+  containerDefinitions:
+    - name: {{ .Values.serviceName }}
+      image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+      portMappings:
+        - containerPort: {{ .Values.port }}
+      environment: {{ toYaml .Values.env | indent 8 }}
+      logConfiguration:
+        logDriver: {{ .Values.logConfiguration.logDriver }}
+        options: {{ toYaml .Values.logConfiguration.options | indent 10 }}
+      memory: {{ .Values.resources.limits.memory }}
+      cpu: {{ .Values.resources.limits.cpu }}
