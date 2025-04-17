@@ -1,0 +1,7 @@
+environment: "dev"
+image:
+  tag: "dev-latest"
+logConfiguration:
+  options:
+    awslogs-group: "/ecs/dev"
+    awslogs-region: "us-west-2"
