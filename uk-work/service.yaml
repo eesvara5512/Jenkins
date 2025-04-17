@@ -1,0 +1,8 @@
+apiVersion: ecs.services.k8s.aws/v1alpha1
+kind: Service
+metadata:
+  name: {{ include "ecs-helm-chart.fullname" . }}
+spec:
+  taskDefinitionRef:
+    name: {{ include "ecs-helm-chart.fullname" . }}
+  desiredCount: 2
