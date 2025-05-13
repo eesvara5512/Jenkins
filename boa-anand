@@ -1,0 +1,34 @@
+---
+- name: Manage Kafka service across environments
+  hosts: "{{ target_env }}"
+  become: true
+  vars:
+    kafka_action: status  # default; override via --extra-vars or survey
+
+  tasks:
+
+    - name: Display the user running the playbook
+      local_action: command whoami
+      register: playbook_user
+
+    - name: Print the user who ran the playbook
+      debug:
+        msg: "Playbook is being run by: {{ playbook_user.stdout }}"
+
+    - name: Manage Kafka service (start/stop/restart)
+      ansible.builtin.systemd:
+        name: kafka
+        state: "{{ kafka_action }}"
+        enabled: yes
+      when: kafka_action != 'status'
+
+    - name: Check Kafka service status
+      ansible.builtin.command: systemctl status kafka
+      register: kafka_status
+      changed_when: false
+      when: kafka_action == 'status'
+
+    - name: Display Kafka service status
+      debug:
+        var: kafka_status.stdout_lines
+      when: kafka_action == 'status'
