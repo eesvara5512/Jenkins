@@ -32,3 +32,12 @@
       debug:
         var: kafka_status.stdout_lines
       when: kafka_action == 'status'
+========================================================
+
+
+- name: Manage Kafka service (start/stop/restart only)
+  ansible.builtin.systemd:
+    name: kafka
+    state: "{{ kafka_action }}"
+    enabled: yes
+  when: kafka_action in ['started', 'stopped', 'restarted']
