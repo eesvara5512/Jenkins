@@ -1,0 +1,39 @@
+---
+- name: Manage multiple services across environments
+  hosts: "{{ target_env }}"
+  become: true
+  vars:
+    service_action: status          # override via CLI or survey
+    target_services: ["kafka"]      # override to support multiple
+                                    # e.g., ["kafka", "zookeeper"]
+
+  tasks:
+
+    - name: Show user running the playbook
+      local_action: command whoami
+      register: playbook_user
+
+    - name: Print user who ran the playbook
+      debug:
+        msg: "Playbook is being run by: {{ playbook_user.stdout }}"
+
+    - name: Manage systemd services (start/stop/restart)
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: "{{ service_action }}"
+        enabled: yes
+      loop: "{{ target_services }}"
+      when: service_action in ['started', 'stopped', 'restarted']
+
+    - name: Check service status (status only)
+      ansible.builtin.command: "systemctl status {{ item }}"
+      register: service_status
+      loop: "{{ target_services }}"
+      when: service_action == 'status'
+      changed_when: false
+
+    - name: Display status for each service
+      debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ service_status.results }}"
+      when: service_action == 'status'
