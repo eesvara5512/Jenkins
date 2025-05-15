@@ -1,0 +1,43 @@
+---
+- name: Manage services with command and sleep
+  hosts: "{{ target_env }}"
+  become: true
+  vars:
+    service_action: start          # options: start, stop, restart, status
+    target_services: ["kafka"]     # can be ["kafka", "zookeeper"]
+    sleep_time: 5                  # seconds to pause between services
+
+  tasks:
+
+    - name: Print user running the playbook
+      local_action: command whoami
+      register: user_info
+
+    - debug:
+        msg: "Playbook run by: {{ user_info.stdout }}"
+
+    - name: Manage services with command
+      block:
+        - name: "{{ service_action | capitalize }} {{ item }}"
+          ansible.builtin.command: "systemctl {{ service_action }} {{ item }}"
+          register: result
+          ignore_errors: false
+
+        - name: Sleep after {{ service_action }} {{ item }}
+          ansible.builtin.pause:
+            seconds: "{{ sleep_time }}"
+      loop: "{{ target_services }}"
+      when: service_action in ['start', 'stop', 'restart']
+
+    - name: Show service status
+      ansible.builtin.command: "systemctl status {{ item }}"
+      register: status_output
+      changed_when: false
+      loop: "{{ target_services }}"
+      when: service_action == 'status'
+
+    - name: Display service status
+      debug:
+        msg: "{{ item.stdout_lines }}"
+      loop: "{{ status_output.results }}"
+      when: service_action == 'status'
