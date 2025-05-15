@@ -41,3 +41,10 @@
         msg: "{{ item.stdout_lines }}"
       loop: "{{ status_output.results }}"
       when: service_action == 'status'
+
+
+
+
+ansible-playbook command_service_control.yml \
+  -i inventory.ini \
+  -e "target_env=kafka_prod service_action=restart target_services=['kafka','zookeeper'] sleep_time=10"
