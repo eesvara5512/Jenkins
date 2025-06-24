@@ -1,0 +1,125 @@
+he error message you're seeing:
+
+pgsql
+Copy
+Edit
+failed to query server version: call to url failed: none of the trustmanagers trust this certificate chain
+…means that the SonarQube Maven scanner is unable to establish a secure HTTPS connection to the SonarQube server because it doesn't trust the server's SSL certificate.
+
+Root Cause
+Java (and therefore Maven) relies on a truststore (typically cacerts) to validate SSL certificates. If the SonarQube server uses a self-signed certificate or a certificate not trusted by default Java truststore, you'll get this error.
+
+Solution Options
+✅ Option 1: Import the certificate into Java truststore
+Export the SSL certificate used by your SonarQube server:
+
+bash
+Copy
+Edit
+openssl s_client -connect <your-sonarqube-host>:443 -showcerts
+Copy the certificate (everything from -----BEGIN CERTIFICATE----- to -----END CERTIFICATE-----) into a file, e.g., sonarqube.crt.
+
+Import it into your Java truststore:
+
+bash
+Copy
+Edit
+keytool -import -trustcacerts -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -alias sonarqube -file sonarqube.crt
+Verify the certificate is imported:
+
+bash
+Copy
+Edit
+keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit | grep sonarqube
+⚠️ Make sure you're using the Java version that Maven uses, or you'll need to specify the JAVA_HOME accordingly.
+
+✅ Option 2: Use a custom truststore
+If you can’t or don’t want to modify the global cacerts file, you can pass a custom truststore in your Maven command:
+
+bash
+Copy
+Edit
+mvn sonar:sonar \
+  -Djavax.net.ssl.trustStore=/path/to/your/truststore \
+  -Djavax.net.ssl.trustStorePassword=yourpassword
+✅ Option 3: Use HTTP instead of HTTPS (Not recommended for production)
+If this is a dev/test environment and you're not dealing with sensitive data, you could reconfigure SonarQube to serve over HTTP instead of HTTPS. This avoids certificate issues entirely — but also bypasses encryption.
+
+Bonus Tip: Verify SonarQube URL
+Make sure the sonar.host.url is set correctly in your pom.xml or settings.xml, or via command line:
+
+bash
+Copy
+Edit
+-Dsonar.host.url=https://your-sonarqube-server
+Let me know if you need help exporting the cert or adjusting the truststore.
+
+
+
+You said:
+ailed to execute goal org.sonar.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar (default-cli) on project the scanner bootstrapping has failed! see the logs more detailes
+
+ChatGPT said:
+The error:
+
+pgsql
+Copy
+Edit
+Failed to execute goal org.sonar.sonarsource.scanner.maven:sonar-maven-plugin:5.1.0.4751:sonar (default-cli) on project: The scanner bootstrapping has failed!
+…is a generic failure from the Sonar Maven plugin during its initialization ("bootstrapping"). The real cause is usually buried earlier in the logs. Based on your earlier message:
+
+kotlin
+Copy
+Edit
+none of the trustmanagers trust this certificate chain
+That’s likely the underlying cause: an SSL handshake failure due to untrusted certificates.
+
+🔍 How to Investigate Further
+Run the Maven command again with debug output enabled to get full details:
+
+bash
+Copy
+Edit
+mvn sonar:sonar -X
+This will show a full stack trace and pinpoint exactly why bootstrapping fails.
+
+🔧 Most Common Fix (Recap)
+Since the issue appears to stem from an untrusted SSL certificate on the SonarQube server:
+
+Export the server certificate (using openssl):
+
+bash
+Copy
+Edit
+openssl s_client -connect <your-sonarqube-server>:443 -showcerts
+Save the certificate to a file like sonarqube.crt.
+
+Import it into your Java truststore:
+
+bash
+Copy
+Edit
+keytool -import -trustcacerts -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit -alias sonarqube -file sonarqube.crt
+(Replace $JAVA_HOME with the Java version Maven uses.)
+
+Verify the import:
+
+bash
+Copy
+Edit
+keytool -list -keystore $JAVA_HOME/lib/security/cacerts -storepass changeit | grep sonarqube
+✅ Temporary Workaround
+If you’re just testing and want to ignore certificate checks (not recommended for production), add this to your Maven command:
+
+bash
+Copy
+Edit
+-Djavax.net.ssl.trustStore=/path/to/truststore \
+-Djavax.net.ssl.trustStorePassword=changeit
+Or switch to HTTP in sonar.host.url (if enabled on your server):
+
+bash
+Copy
+Edit
+-Dsonar.host.url=http://your-sonarqube-host
+If you paste the output of mvn sonar:sonar -X, I can analyze the exact root cause for you.
