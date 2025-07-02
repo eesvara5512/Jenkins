@@ -1,0 +1,35 @@
+aws ec2 describe-images \
+  --owners self \
+  --query "Images[?CreationDate<='$(date -d '-7 days' --utc +%Y-%m-%dT%H:%M:%S)'].{ID:ImageId,Name:Name,CreationDate:CreationDate}" \
+  --output table
+
+=================================================
+
+#!/bin/bash
+
+# Get today's date minus 7 days in ISO format
+cutoff_date=$(date -d '-7 days' --utc +%Y-%m-%dT%H:%M:%S)
+
+# Get AMI IDs older than 7 days
+amis=$(aws ec2 describe-images --owners self \
+  --query "Images[?CreationDate<='${cutoff_date}'].[ImageId]" \
+  --output text)
+
+for ami_id in $amis; do
+  echo "Processing AMI: $ami_id"
+
+  # Get snapshot IDs associated with this AMI
+  snapshots=$(aws ec2 describe-images --image-ids $ami_id \
+    --query "Images[].BlockDeviceMappings[].Ebs.SnapshotId" \
+    --output text)
+
+  # Deregister the AMI
+  echo "Deregistering AMI: $ami_id"
+  aws ec2 deregister-image --image-id $ami_id
+
+  # Delete associated snapshots
+  for snapshot_id in $snapshots; do
+    echo "Deleting snapshot: $snapshot_id"
+    aws ec2 delete-snapshot --snapshot-id $snapshot_id
+  done
+done
