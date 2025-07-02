@@ -1,0 +1,29 @@
+Shell Script to Delete Volumes Older Than 30 Days
+
+#!/bin/bash
+
+# Set cutoff date (30 days ago)
+cutoff_date=$(date -d '-30 days' --utc +%Y-%m-%dT%H:%M:%S)
+
+# Get available (unattached) volumes
+volumes=$(aws ec2 describe-volumes \
+  --filters Name=status,Values=available \
+  --query "Volumes[?CreateTime<='${cutoff_date}'].[VolumeId,CreateTime]" \
+  --output text)
+
+while read -r volume_id create_time; do
+  echo "Deleting volume: $volume_id (Created: $create_time)"
+  aws ec2 delete-volume --volume-id $volume_id
+done <<< "$volumes"
+
+
+==============================
+
+Important Notes
+This only deletes unattached (available) volumes.
+
+Deletion is permanent.
+
+For testing, add --dry-run:
+
+aws ec2 delete-volume --volume-id $volume_id --dry-run
