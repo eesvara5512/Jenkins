@@ -175,3 +175,87 @@ Encrypt it
 Save to: s3://your-company-data-bucket/encrypted/client-report-2025-07-01.txt.pgp
 
 Move original to: s3://your-company-data-bucket/archived/client-report-2025-07-01.txt
+
+================================================
+================================================
+================================================
+
+ 1. IAM Role for Lambda
+This role allows your Lambda to:
+
+Read/write/delete S3 objects
+
+Retrieve the PGP public key from Secrets Manager
+
+🔐 IAM Role (JSON Policy)
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "S3Access",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+        "s3:CopyObject"
+      ],
+      "Resource": "arn:aws:s3:::your-company-data-bucket/*"
+    },
+    {
+      "Sid": "SecretsAccess",
+      "Effect": "Allow",
+      "Action": [
+        "secretsmanager:GetSecretValue"
+      ],
+      "Resource": "arn:aws:secretsmanager:<region>:<account-id>:secret:PGP_PUBLIC_KEY-*"
+    },
+    {
+      "Sid": "Logging",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogGroup",
+        "logs:CreateLogStream",
+        "logs:PutLogEvents"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+🔁 Replace:
+
+your-company-data-bucket with your real S3 bucket name
+
+<region> and <account-id> with your AWS region/account
+
+PGP_PUBLIC_KEY with the exact name of your secret
+
+✅ 2. S3 Trigger Event Notification (JSON)
+To trigger your Lambda when .txt files are uploaded to the incoming/ folder.
+
+Example:
+
+{
+  "LambdaFunctionConfigurations": [
+    {
+      "Id": "PGPEncryptTxtFilesTrigger",
+      "LambdaFunctionArn": "arn:aws:lambda:<region>:<account-id>:function:YourPGPEncryptLambda",
+      "Events": ["s3:ObjectCreated:*"],
+      "Filter": {
+        "Key": {
+          "FilterRules": [
+            { "Name": "prefix", "Value": "incoming/" },
+            { "Name": "suffix", "Value": ".txt" }
+          ]
+        }
+      }
+    }
+  ]
+}
+You can configure this trigger using:
+
+
+aws s3api put-bucket-notification-configuration \
+  --bucket your-company-data-bucket \
+  --notification-configuration file://s3-trigger.json
