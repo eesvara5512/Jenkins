@@ -88,3 +88,90 @@ aws secretsmanager create-secret \
   --name PGP_PUBLIC_KEY \
   --secret-string file://public-key.asc
 Or paste the armored key directly in the Secrets Manager UI.
+
+==============================
+==============================
+===============================
+Example Setup
+🔸 S3 Bucket Name
+your-company-data-bucket
+
+🔸 File Upload Example
+You upload:
+incoming/client-report-2025-07-01.txt
+
+Full S3 path:
+s3://your-company-data-bucket/incoming/client-report-2025-07-01.txt
+🔁 Result After Lambda Processing
+🔹 Encrypted File:
+s3://your-company-data-bucket/encrypted/client-report-2025-07-01.txt.pgp
+
+🔹 Original File Archived:
+s3://your-company-data-bucket/archived/client-report-2025-07-01.txt
+
+🧠 Full Lambda Example With These Paths
+
+import boto3
+import gnupg
+import os
+
+s3 = boto3.client('s3')
+secrets = boto3.client('secretsmanager')
+
+gpg = gnupg.GPG(gnupghome='/tmp/.gnupg')
+
+def lambda_handler(event, context):
+    # Example event
+    # s3://your-company-data-bucket/incoming/client-report-2025-07-01.txt
+
+    bucket = event['Records'][0]['s3']['bucket']['name']
+    key = event['Records'][0]['s3']['object']['key']
+
+    if not key.startswith('incoming/') or not key.endswith('.txt'):
+        return {'statusCode': 200, 'body': 'Not a valid .txt file in incoming/'}
+
+    filename = os.path.basename(key)
+    local_txt_path = f'/tmp/{filename}'
+    encrypted_path = f'/tmp/{filename}.pgp'
+
+    # 🔐 Load PGP public key from Secrets Manager
+    secret_response = secrets.get_secret_value(SecretId='PGP_PUBLIC_KEY')
+    public_key = secret_response['SecretString']
+    gpg.import_keys(public_key)
+
+    # 📥 Download file from S3
+    s3.download_file(bucket, key, local_txt_path)
+
+    # 🔐 Encrypt file using PGP
+    with open(local_txt_path, 'rb') as f:
+        gpg.encrypt_file(f, output=encrypted_path, recipients=None, always_trust=True)
+
+    # 📤 Upload encrypted file
+    encrypted_s3_key = f'encrypted/{filename}.pgp'
+    s3.upload_file(encrypted_path, bucket, encrypted_s3_key)
+
+    # 🗂️ Archive original file
+    archived_s3_key = f'archived/{filename}'
+    s3.copy_object(
+        Bucket=bucket,
+        CopySource={'Bucket': bucket, 'Key': key},
+        Key=archived_s3_key
+    )
+    s3.delete_object(Bucket=bucket, Key=key)
+
+    return {
+        'statusCode': 200,
+        'body': f'File encrypted to {encrypted_s3_key} and moved to {archived_s3_key}'
+    }
+Upload Simulation
+To test this:
+
+
+aws s3 cp client-report-2025-07-01.txt s3://your-company-data-bucket/incoming/
+If everything is configured correctly, Lambda will:
+
+Encrypt it
+
+Save to: s3://your-company-data-bucket/encrypted/client-report-2025-07-01.txt.pgp
+
+Move original to: s3://your-company-data-bucket/archived/client-report-2025-07-01.txt
