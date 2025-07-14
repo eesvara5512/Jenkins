@@ -1,0 +1,39 @@
+ Example: Automatically Get Latest Oracle RDS Version (within a Major Version)
+📦 Use Case: Get latest Oracle 19c engine version on AWS
+
+variable "major_engine_version" {
+  default = "19"
+}
+🔍 Step 1: Get latest minor version of Oracle 19
+
+data "aws_rds_engine_version" "oracle" {
+  engine              = "oracle-ee"  # or oracle-se2, oracle-se1, oracle-se
+  preferred_versions  = ["${var.major_engine_version}"]
+}
+This block will pick the latest minor version within the major version 19 (e.g., 19.0.0.0.ru-2024-04.rur-2024-04.r1).
+
+🏗️ Step 2: Use it in an RDS Instance
+
+resource "aws_db_instance" "oracle_db" {
+  allocated_storage    = 20
+  engine               = data.aws_rds_engine_version.oracle.engine
+  engine_version       = data.aws_rds_engine_version.oracle.version
+  instance_class       = "db.m5.large"
+  name                 = "myoracledb"
+  username             = "admin"
+  password             = "MySecurePassword123!"
+  db_subnet_group_name = aws_db_subnet_group.default.name
+  skip_final_snapshot  = true
+}
+🧪 Sample Output
+Terraform will automatically resolve the latest available engine version like:
+
+
+engine_version = "19.0.0.0.ru-2024-04.rur-2024-04.r1"
+⚙️ Summary
+Parameter	Purpose
+major_engine_version	The major version to constrain (e.g. "19")
+preferred_versions	Tells Terraform to use latest matching version
+data.aws_rds_engine_version.version	The actual version Terraform uses
+
+Would you like to lock to the latest 21c instead? Or do you want to filter Oracle editions (ee, se2, etc.) or multiple regions? I can help you adjust that.
