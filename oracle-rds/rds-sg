@@ -1,0 +1,78 @@
+Step-by-Step Example
+1. 🔧 Define Variables in variables.tf
+hcl
+Copy
+Edit
+variable "from_port" {
+  type        = number
+  description = "Start of the port range for ingress rule"
+}
+
+variable "to_port" {
+  type        = number
+  description = "End of the port range for ingress rule"
+}
+
+variable "ingress_cidrs" {
+  type        = list(string)
+  description = "CIDRs allowed to access the port range"
+}
+
+variable "egress_cidrs" {
+  type        = list(string)
+  description = "CIDRs allowed for egress"
+}
+2. 🏗️ Use Variables in main.tf
+h
+Copy
+Edit
+resource "aws_security_group" "oracle_sg" {
+  name        = "oracle-db-sg"
+  description = "Allow access to Oracle DB port range"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = var.ingress_cidrs
+    content {
+      from_port   = var.from_port
+      to_port     = var.to_port
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
+  dynamic "egress" {
+    for_each = var.egress_cidrs
+    content {
+      from_port   = 0
+      to_port     = 0
+      protocol    = "-1"
+      cidr_blocks = [egress.value]
+    }
+  }
+}
+3. 📄 terraform.tfvars
+hcl
+Copy
+Edit
+from_port     = 1525
+to_port       = 1525
+
+ingress_cidrs = [
+  "10.0.0.0/24",
+  "192.168.0.0/24"
+]
+
+egress_cidrs = [
+  "0.0.0.0/0"
+]
+✅ Bonus: Allow a Range (e.g. 1521-1530)
+If you want to allow a full range instead of just one port:
+
+hcl
+Copy
+Edit
+from_port = 1521
+to_port   = 1530
+This will allow TCP traffic on all ports between 1521 and 1530.
+
