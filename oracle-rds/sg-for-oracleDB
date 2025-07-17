@@ -1,0 +1,98 @@
+Updated Terraform Configuration
+🔧 1. variables.tf
+
+variable "db_port" {
+  description = "Port number for Oracle RDS access"
+  type        = number
+}
+
+variable "cidr_blocks" {
+  description = "List of CIDR blocks to allow access"
+  type        = list(string)
+}
+
+variable "vpc_id" {
+  description = "VPC ID for the RDS and security group"
+  type        = string
+}
+
+variable "db_subnet_ids" {
+  description = "List of subnet IDs for RDS"
+  type        = list(string)
+}
+📄 2. terraform.tfvars
+
+db_port     = 1525
+
+cidr_blocks = [
+  "10.0.0.0/16",
+  "192.168.100.0/24"
+]
+
+vpc_id = "vpc-1234567890abcdef0"
+
+db_subnet_ids = [
+  "subnet-abc12345",
+  "subnet-def67890"
+]
+📦 3. main.tf
+
+resource "aws_db_subnet_group" "oracle_rds_subnet_group" {
+  name       = "oracle-rds-subnet-group"
+  subnet_ids = var.db_subnet_ids
+
+  tags = {
+    Name = "Oracle RDS Subnet Group"
+  }
+}
+
+resource "aws_security_group" "oracle_rds_sg" {
+  name        = "oracle-rds-sg"
+  description = "Allow access to Oracle RDS on custom port"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = var.cidr_blocks
+    content {
+      from_port   = var.db_port
+      to_port     = var.db_port
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "Oracle RDS SG"
+  }
+}
+
+resource "aws_db_instance" "oracle_rds" {
+  allocated_storage    = 20
+  storage_type         = "gp2"
+  engine               = "oracle-se2"
+  engine_version       = "19.0.0.0.ru-2023-10.rur-2023-10.r1"
+  instance_class       = "db.t3.medium"
+  name                 = "oracledb"
+  username             = "admin"
+  password             = "yourStrongPassword1!" # replace with secrets management in real use
+  port                 = var.db_port
+  publicly_accessible  = false
+  db_subnet_group_name = aws_db_subnet_group.oracle_rds_subnet_group.name
+  vpc_security_group_ids = [aws_security_group.oracle_rds_sg.id]
+  skip_final_snapshot  = true
+
+  tags = {
+    Name = "Oracle RDS"
+  }
+}
+✅ Final Steps
+
+terraform init
+terraform apply -var-file="terraform.tfvars"
