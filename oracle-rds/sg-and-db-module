@@ -1,0 +1,146 @@
+Project Structure
+
+.
+├── main.tf
+├── terraform.tfvars
+├── variables.tf
+├── modules/
+│   ├── db/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   └── outputs.tf
+│   └── sg/
+│       ├── main.tf
+│       ├── variables.tf
+│       └── outputs.tf
+🔐 modules/sg/ – Security Group Module
+modules/sg/variables.tf
+
+variable "vpc_id" {
+  type = string
+}
+
+variable "port" {
+  type = number
+}
+
+variable "cidr_blocks" {
+  type = list(string)
+}
+modules/sg/main.tf
+
+resource "aws_security_group" "this" {
+  name        = "oracle-rds-sg"
+  description = "Allow access to Oracle RDS on custom port"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = var.cidr_blocks
+    content {
+      from_port   = var.port
+      to_port     = var.port
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "Oracle RDS SG"
+  }
+}
+modules/sg/outputs.tf
+
+output "security_group_id" {
+  value = aws_security_group.this.id
+}
+🛢️ modules/db/ – RDS Module
+modules/db/variables.tf
+
+variable "db_subnet_ids" {
+  type = list(string)
+}
+
+variable "vpc_security_group_ids" {
+  type = list(string)
+}
+
+variable "port" {
+  type = number
+}
+modules/db/main.tf
+
+resource "aws_db_subnet_group" "this" {
+  name       = "oracle-rds-subnet-group"
+  subnet_ids = var.db_subnet_ids
+}
+
+resource "aws_db_instance" "this" {
+  allocated_storage    = 20
+  storage_type         = "gp2"
+  engine               = "oracle-se2"
+  engine_version       = "19.0.0.0.ru-2023-10.rur-2023-10.r1"
+  instance_class       = "db.t3.medium"
+  name                 = "oracledb"
+  username             = "admin"
+  password             = "YourStrongPassword1!"
+  port                 = var.port
+  publicly_accessible  = false
+  db_subnet_group_name = aws_db_subnet_group.this.name
+  vpc_security_group_ids = var.vpc_security_group_ids
+  skip_final_snapshot  = true
+
+  tags = {
+    Name = "Oracle RDS"
+  }
+}
+📦 main.tf – Root Module
+
+module "rds_sg" {
+  source      = "./modules/sg"
+  vpc_id      = var.vpc_id
+  port        = var.db_port
+  cidr_blocks = var.cidr_blocks
+}
+
+module "oracle_db" {
+  source                 = "./modules/db"
+  db_subnet_ids          = var.db_subnet_ids
+  port                   = var.db_port
+  vpc_security_group_ids = [module.rds_sg.security_group_id]
+}
+📄 variables.tf
+hcl
+Copy
+Edit
+variable "vpc_id" {
+  type = string
+}
+
+variable "db_port" {
+  type = number
+}
+
+variable "cidr_blocks" {
+  type = list(string)
+}
+
+variable "db_subnet_ids" {
+  type = list(string)
+}
+📄 terraform.tfvars
+
+vpc_id       = "vpc-1234567890abcdef0"
+db_port      = 1525
+cidr_blocks  = ["10.0.0.0/16", "192.168.100.0/24"]
+db_subnet_ids = ["subnet-abc12345", "subnet-def67890"]
+✅ Final Steps
+
+terraform init
+terraform apply -var-file="terraform.tfvars"
