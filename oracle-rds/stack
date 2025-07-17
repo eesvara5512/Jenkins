@@ -1,0 +1,252 @@
+Folder Structure
+
+oracle-rds-stack/
+├── main.tf
+├── variables.tf
+├── terraform.tfvars
+📄 main.tf
+
+terraform {
+  required_version = ">= 1.3"
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = ">= 4.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.region
+}
+
+module "rds_sg" {
+  source      = "git::https://github.com/your-org/terraform-aws-securitygroup.git//modules/sg?ref=v1.0.0"
+  vpc_id      = var.vpc_id
+  port        = var.db_port
+  cidr_blocks = var.cidr_blocks
+}
+
+module "oracle_db" {
+  source                 = "git::https://github.com/your-org/terraform-aws-rds-oracle.git//modules/db?ref=v1.0.0"
+  db_subnet_ids          = var.db_subnet_ids
+  port                   = var.db_port
+  vpc_security_group_ids = [module.rds_sg.security_group_id]
+}
+📄 variables.tf
+
+variable "region" {
+  type        = string
+  description = "AWS region"
+}
+
+variable "vpc_id" {
+  type        = string
+  description = "VPC where resources will be deployed"
+}
+
+variable "db_port" {
+  type        = number
+  description = "Port number for Oracle RDS access"
+}
+
+variable "cidr_blocks" {
+  type        = list(string)
+  description = "List of CIDR blocks allowed to access RDS"
+}
+
+variable "db_subnet_ids" {
+  type        = list(string)
+  description = "Subnets to associate with the RDS subnet group"
+}
+📄 terraform.tfvars
+
+region = "us-west-2"
+vpc_id = "vpc-0123456789abcdef0"
+db_port = 1525
+
+cidr_blocks = [
+  "10.0.0.0/16",
+  "192.168.0.0/24"
+]
+
+db_subnet_ids = [
+  "subnet-0abcde12345678901",
+  "subnet-0fedcb9876543210f"
+]
+✅ Usage Instructions
+Place this code in your stack repo (e.g. oracle-rds-stack/).
+
+Run Terraform:
+
+
+terraform init
+terraform plan -var-file="terraform.tfvars"
+terraform apply -var-file="terraform.tfvars"
+🔁 Notes
+ref=v1.0.0 can be changed to a branch (ref=main) or tag.
+
+These GitHub modules must contain the following:
+
+Security Group module (sg) must output security_group_id.
+
+RDS module (db) must accept port, db_subnet_ids, and vpc_security_group_ids.
+
+Do you want me to generate the Terraform code for those GitHub modules (modules/sg, modules/db) too? I can scaffold those repos if needed.
+
+
+
+You said:
+Do you want me to generate the Terraform code for those GitHub modules (modules/sg, modules/db) too?  yes 
+
+ChatGPT said:
+Great! Here's a complete setup for your two Terraform GitHub modules:
+
+✅ MODULE 1: terraform-aws-securitygroup → modules/sg
+📁 Folder structure
+
+terraform-aws-securitygroup/
+└── modules/
+    └── sg/
+        ├── main.tf
+        ├── variables.tf
+        └── outputs.tf
+🔹 main.tf
+hcl
+
+resource "aws_security_group" "this" {
+  name        = "oracle-rds-sg"
+  description = "Allow access to Oracle RDS on custom port"
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = var.cidr_blocks
+    content {
+      from_port   = var.port
+      to_port     = var.port
+      protocol    = "tcp"
+      cidr_blocks = [ingress.value]
+    }
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = {
+    Name = "Oracle RDS SG"
+  }
+}
+🔹 variables.tf
+
+variable "vpc_id" {
+  type        = string
+  description = "VPC ID for the security group"
+}
+
+variable "port" {
+  type        = number
+  description = "Port to allow inbound access"
+}
+
+variable "cidr_blocks" {
+  type        = list(string)
+  description = "List of CIDRs to allow inbound access"
+}
+🔹 outputs.tf
+
+output "security_group_id" {
+  description = "The ID of the security group"
+  value       = aws_security_group.this.id
+}
+✅ MODULE 2: terraform-aws-rds-oracle → modules/db
+📁 Folder structure
+
+terraform-aws-rds-oracle/
+└── modules/
+    └── db/
+        ├── main.tf
+        ├── variables.tf
+        └── outputs.tf
+🔹 main.tf
+
+resource "aws_db_subnet_group" "this" {
+  name       = "oracle-rds-subnet-group"
+  subnet_ids = var.db_subnet_ids
+
+  tags = {
+    Name = "Oracle RDS Subnet Group"
+  }
+}
+
+resource "aws_db_instance" "this" {
+  allocated_storage    = 20
+  storage_type         = "gp2"
+  engine               = "oracle-se2"
+  engine_version       = "19.0.0.0.ru-2023-10.rur-2023-10.r1"
+  instance_class       = "db.t3.medium"
+  name                 = "oracledb"
+  username             = "admin"
+  password             = "YourStrongPassword1!" # replace with SSM/Secrets in prod
+  port                 = var.port
+  publicly_accessible  = false
+  db_subnet_group_name = aws_db_subnet_group.this.name
+  vpc_security_group_ids = var.vpc_security_group_ids
+  skip_final_snapshot  = true
+
+  tags = {
+    Name = "Oracle RDS"
+  }
+}
+🔹 variables.tf
+
+variable "db_subnet_ids" {
+  type        = list(string)
+  description = "List of subnet IDs for RDS"
+}
+
+variable "port" {
+  type        = number
+  description = "Port to run Oracle DB on"
+}
+
+variable "vpc_security_group_ids" {
+  type        = list(string)
+  description = "List of security group IDs to associate with the DB instance"
+}
+🔹 outputs.tf
+
+output "rds_instance_id" {
+  description = "ID of the Oracle RDS instance"
+  value       = aws_db_instance.this.id
+}
+
+output "endpoint" {
+  description = "RDS endpoint"
+  value       = aws_db_instance.this.endpoint
+}
+
+output "port" {
+  description = "RDS port"
+  value       = aws_db_instance.this.port
+}
+🚀 How to Use in Your Stack
+In your stack's main.tf, reference like this:
+
+
+module "rds_sg" {
+  source      = "git::https://github.com/your-org/terraform-aws-securitygroup.git//modules/sg?ref=v1.0.0"
+  vpc_id      = var.vpc_id
+  port        = var.db_port
+  cidr_blocks = var.cidr_blocks
+}
+
+module "oracle_db" {
+  source                 = "git::https://github.com/your-org/terraform-aws-rds-oracle.git//modules/db?ref=v1.0.0"
+  db_subnet_ids          = var.db_subnet_ids
+  port                   = var.db_port
+  vpc_security_group_ids = [module.rds_sg.security_group_id]
+}
