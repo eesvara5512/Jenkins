@@ -1,0 +1,150 @@
+Updated Plan: Dynamic Ingress & Egress from Root Stack
+🔧 modules/sg_oracle/main.tf
+
+resource "aws_security_group" "oracle_sg" {
+  name        = var.sg_name
+  description = var.description
+  vpc_id      = var.vpc_id
+
+  dynamic "ingress" {
+    for_each = var.ingress_rules
+    content {
+      from_port   = ingress.value.from_port
+      to_port     = ingress.value.to_port
+      protocol    = ingress.value.protocol
+      cidr_blocks = ingress.value.cidr_blocks
+      description = lookup(ingress.value, "description", null)
+    }
+  }
+
+  dynamic "egress" {
+    for_each = var.egress_rules
+    content {
+      from_port   = egress.value.from_port
+      to_port     = egress.value.to_port
+      protocol    = egress.value.protocol
+      cidr_blocks = egress.value.cidr_blocks
+      description = lookup(egress.value, "description", null)
+    }
+  }
+
+  tags = var.tags
+}
+📥 modules/sg_oracle/variables.tf
+
+variable "vpc_id" {}
+variable "sg_name" {}
+variable "description" {}
+variable "tags" {
+  type = map(string)
+}
+
+variable "ingress_rules" {
+  type = list(object({
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+    description = optional(string)
+  }))
+}
+
+variable "egress_rules" {
+  type = list(object({
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+    description = optional(string)
+  }))
+}
+🌐 Root Stack: Define Rules and Pass
+📄 main.tf
+
+provider "aws" {
+  region = var.aws_region
+}
+
+module "oracle_sg" {
+  source      = "./modules/sg_oracle"
+  vpc_id      = var.vpc_id
+  sg_name     = "oracle-db-sg"
+  description = "SG for Oracle DB"
+  tags        = var.common_tags
+
+  ingress_rules = var.oracle_ingress
+  egress_rules  = var.oracle_egress
+}
+📄 variables.tf
+
+variable "aws_region" {
+  default = "us-west-2"
+}
+
+variable "vpc_id" {}
+
+variable "common_tags" {
+  type = map(string)
+  default = {
+    Environment = "dev"
+    Team        = "DB"
+  }
+}
+
+variable "oracle_ingress" {
+  description = "Ingress rules for Oracle DB SG"
+  type = list(object({
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+    description = optional(string)
+  }))
+}
+
+variable "oracle_egress" {
+  description = "Egress rules for Oracle DB SG"
+  type = list(object({
+    from_port   = number
+    to_port     = number
+    protocol    = string
+    cidr_blocks = list(string)
+    description = optional(string)
+  }))
+}
+📄 terraform.tfvars
+
+oracle_ingress = [
+  {
+    from_port   = 1521
+    to_port     = 1521
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/16"]
+    description = "Oracle DB port"
+  },
+  {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["203.0.113.0/24"]
+    description = "SSH access"
+  }
+]
+
+oracle_egress = [
+  {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+    description = "Allow all outbound"
+  }
+]
+✅ Result
+Your module accepts ingress and egress rules as input.
+
+Rules are fully dynamic and environment-specific.
+
+Keeps module clean and reusable across different stacks or services.
+
+Would you like this structured as a GitHub repo or downloadable ZIP file for testing? Or should I help you integrate it into an existing Terraform setup (e.g., using terragrunt or Terraform Cloud)?
