@@ -4,3 +4,24 @@ output "rendered" {
     var2 = "another"
   })
 }
+
+
+-----------------------
+
+Quoted heredoc delimiter with <<- 'EOF':
+
+The - allows for indentation stripping, but this only works when the delimiter is unquoted.
+
+Quoting 'EOF' disables variable and command substitution, which might not be what you want.
+
+Quoting also disables the effect of -, so the closing EOF must not be indented at all.
+
+
+-----
+The EOF closing tag must be on its own line with no trailing whitespace or indentation (since you're using a quoted heredoc)
+
+cat << 'EOF' > /etc/profile.d/nvm_home.sh
+export NVM_DIR="/opt/nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+EOF
