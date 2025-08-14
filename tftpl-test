@@ -25,3 +25,116 @@ export NVM_DIR="/opt/nvm"
 [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
 [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
 EOF
+
+===================below is final working and clear issue==========================================================
+==================================================================================================================
+
+# Install Nginx and dependencies
+cat <<'EOF' > /tmp/install_nginx.sh
+#!/bin/bash
+yum update -y
+yum install  -y httpd
+systemctl enable httpd
+systemctl start httpd
+
+cat <<- 'EOF' > /etc/profile.d/nvm_home.sh
+export NVM_DIR="/opt/nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+EOF
+
+chmod +x /etc/profile.d/nvm_home.sh
+bash /etc/profile.d/nvm_home.sh
+
+EOF
+
+chmod +x /tmp/install_nginx.sh
+bash /tmp/install_nginx.sh
+
+# Configure Welcome Page
+cat <<'EOF' > /tmp/config_web.sh
+#!/bin/bash
+echo "<h1>Welcome to Terraform EC2</h1>" > /var/www/html/index.html
+EOF
+
+chmod +x /tmp/config_web.sh
+bash /tmp/config_web.sh
+
+# Set Environment Variables
+cat <<'EOF' > /tmp/set_env.sh
+#!/bin/bash
+echo "export APP_ENV=production" >> /etc/profile.d/app_env.sh
+EOF
+
+chmod +x /tmp/set_env.sh
+bash /tmp/set_env.sh
+
+echo "All setup complete!"
+
+
+===============================
+
+
+ceated symlink /etc/systemd/system/multi-user.target.wants/httpd.service → /usr/lib/systemd/system/httpd.service.
+/tmp/install_nginx.sh: line 10: warning: here-document at line 7 delimited by end-of-file (wanted `EOF')
+All setup complete!
+
+
+==============
+
+Why this is happening
+
+Your script has a nested cat << 'EOF' block inside another cat << 'EOF' block using the same delimiter (EOF). Bash doesn't handle that well — the outer heredoc gets confused by the inner one.
+
+
+Solution: Use different delimiters for each heredoc
+
+You must avoid using the same heredoc marker (EOF) inside itself. Use unique markers like EOF1, EOF2, etc.
+
+
+======================
+
+#!/bin/bash
+
+echo "Starting EC2 setup..."
+
+# Install Apache and setup NVM profile
+cat <<'EOF1' > /tmp/install_httpd.sh
+#!/bin/bash
+yum update -y
+yum install -y httpd
+systemctl enable httpd
+systemctl start httpd
+
+# Create nvm_home.sh with environment settings
+cat <<'EOF2' > /etc/profile.d/nvm_home.sh
+export NVM_DIR="/opt/nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"
+[ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"
+EOF2
+
+chmod +x /etc/profile.d/nvm_home.sh
+EOF1
+
+chmod +x /tmp/install_httpd.sh
+bash /tmp/install_httpd.sh
+
+# Configure Welcome Page
+cat <<'EOF' > /tmp/config_web.sh
+#!/bin/bash
+echo "<h1>Welcome to Terraform EC2</h1>" > /var/www/html/index.html
+EOF
+
+chmod +x /tmp/config_web.sh
+bash /tmp/config_web.sh
+
+# Set Environment Variables
+cat <<'EOF' > /tmp/set_env.sh
+#!/bin/bash
+echo "export APP_ENV=production" >> /etc/profile.d/app_env.sh
+EOF
+
+chmod +x /tmp/set_env.sh
+bash /tmp/set_env.sh
+
+echo "All setup complete!"
