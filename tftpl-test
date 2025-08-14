@@ -1,0 +1,6 @@
+output "rendered" {
+  value = templatefile("${path.module}/master_config.tftpl", {
+    var1 = "example"
+    var2 = "another"
+  })
+}
