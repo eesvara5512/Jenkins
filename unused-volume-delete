@@ -1,0 +1,18 @@
+Using AWS CLI
+1. List Unused Volumes
+aws ec2 describe-volumes \
+  --filters Name=status,Values=available \
+  --query "Volumes[*].{ID:VolumeId,Size:Size,AZ:AvailabilityZone,Tags:Tags}" \
+  --output table
+
+2. Delete Unused Volumes
+
+Loop through and delete:
+
+for volume in $(aws ec2 describe-volumes \
+  --filters Name=status,Values=available \
+  --query "Volumes[*].VolumeId" \
+  --output text); do
+  echo "Deleting volume: $volume"
+  aws ec2 delete-volume --volume-id $volume
+done
