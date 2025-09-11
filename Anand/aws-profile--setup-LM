@@ -1,0 +1,14 @@
+switch_aws_profile() {
+  if [[ "$1" == "dev" || "$1" == "tst" ]]; then
+    export AWS_PROFILE=$1
+    export KITCHEN_AWS_PROFILE=$1
+    echo "Switched AWS profile to '$1'"
+  else
+    echo "Usage: switch_aws_profile [dev|tst]"
+  fi
+}
+
+
+source ~/.zprofile
+
+switch_aws_profile tst
